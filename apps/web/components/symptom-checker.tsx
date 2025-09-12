@@ -1,558 +1,532 @@
 "use client"
 
 import { GovtHeader } from "@/components/govt-header"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Textarea } from "@/components/ui/textarea"
-import { AlertTriangle, ArrowLeft, ArrowRight, Brain, Calendar, CheckCircle, Phone, Video } from "lucide-react"
-import { useState } from "react"
-
-interface Symptom {
-  id: string
-  name: string
-  severity: "mild" | "moderate" | "severe"
-  duration: string
-  description: string
-}
-
-interface Assessment {
-  riskLevel: "low" | "moderate" | "high" | "emergency"
-  primaryConditions: string[]
-  recommendations: string[]
-  urgency: string
-  nextSteps: string[]
-}
+import { useApiState, useSpeechRecognition } from "@/hooks/useSymptomChecker"
+import { useTextToSpeech } from "@/hooks/useTextToSpeech"
+import { SymptomAnalysis } from "@/lib/types/symptom-checker"
+import {
+  COMMON_SYMPTOMS,
+  findSpecialistTypes,
+  generateWellnessGuide,
+  translateAndAnalyzeSymptoms
+} from "@/lib/utils/gemini-api"
+import { AlertTriangle, ArrowLeft, Loader2, Mic, MicOff, Pause, Play, Search, Sparkles, Volume2, VolumeX } from "lucide-react"
+import { useEffect, useState } from "react"
+import ReactMarkdown from 'react-markdown'
+import rehypeRaw from 'rehype-raw'
+import remarkGfm from 'remark-gfm'
 
 export function SymptomChecker() {
-  const [currentStep, setCurrentStep] = useState(1)
-  const [symptoms, setSymptoms] = useState<Symptom[]>([])
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [assessment, setAssessment] = useState<Assessment | null>(null)
-  const [formData, setFormData] = useState({
-    primarySymptom: "",
-    duration: "",
-    severity: "",
-    additionalSymptoms: [] as string[],
-    age: "",
-    gender: "",
-    medicalHistory: "",
-    currentMedications: "",
-  })
+  const [symptomsText, setSymptomsText] = useState("")
+  const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([])
+  const [showResults, setShowResults] = useState(false)
+  const [showActions, setShowActions] = useState(false)
+  const [extraResult, setExtraResult] = useState("")
+  
+  // Custom hooks
+  const speechRecognition = useSpeechRecognition()
+  const analysisApi = useApiState<SymptomAnalysis>()
+  const wellnessApi = useApiState<string>()
+  const specialistApi = useApiState<string>()
+  const textToSpeech = useTextToSpeech()
 
-  const commonSymptoms = [
-    "Fever",
-    "Headache",
-    "Cough",
-    "Sore throat",
-    "Body ache",
-    "Nausea",
-    "Dizziness",
-    "Chest pain",
-    "Shortness of breath",
-    "Stomach pain",
-    "Fatigue",
-    "Skin rash",
-  ]
-
-  const emergencySymptoms = [
-    "Severe chest pain",
-    "Difficulty breathing",
-    "Severe bleeding",
-    "Loss of consciousness",
-    "Severe head injury",
-    "Stroke symptoms",
-  ]
-
-  const analyzeSymptoms = async () => {
-    setIsAnalyzing(true)
-
-    // Simulate AI analysis with realistic delay for low-bandwidth optimization
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-
-    // Mock AI assessment based on symptoms
-    const mockAssessment: Assessment = {
-      riskLevel:
-        formData.severity === "severe" ||
-        emergencySymptoms.some((s) => formData.primarySymptom.toLowerCase().includes(s.toLowerCase()))
-          ? "high"
-          : formData.severity === "moderate"
-            ? "moderate"
-            : "low",
-      primaryConditions: getPossibleConditions(formData.primarySymptom),
-      recommendations: getRecommendations(formData.primarySymptom, formData.severity),
-      urgency: getUrgencyLevel(formData.primarySymptom, formData.severity),
-      nextSteps: getNextSteps(formData.primarySymptom, formData.severity),
+  useEffect(() => {
+    if (speechRecognition.transcript) {
+      setSymptomsText(speechRecognition.transcript)
     }
+  }, [speechRecognition.transcript])
 
-    setAssessment(mockAssessment)
-    setIsAnalyzing(false)
-    setCurrentStep(4)
-  }
-
-  const getPossibleConditions = (symptom: string): string[] => {
-    const symptomLower = symptom.toLowerCase()
-    if (symptomLower.includes("fever") || symptomLower.includes("cough")) {
-      return ["Common Cold", "Flu", "Respiratory Infection"]
-    } else if (symptomLower.includes("headache")) {
-      return ["Tension Headache", "Migraine", "Dehydration"]
-    } else if (symptomLower.includes("stomach") || symptomLower.includes("nausea")) {
-      return ["Gastritis", "Food Poisoning", "Indigestion"]
-    }
-    return ["General Illness", "Viral Infection"]
-  }
-
-  const getRecommendations = (symptom: string, severity: string): string[] => {
-    const base = ["Rest and stay hydrated", "Monitor symptoms closely"]
-    if (severity === "severe") {
-      return ["Seek immediate medical attention", ...base]
-    } else if (severity === "moderate") {
-      return ["Consider consulting a doctor", ...base, "Take over-the-counter medication if needed"]
-    }
-    return [...base, "Use home remedies", "Consult doctor if symptoms worsen"]
-  }
-
-  const getUrgencyLevel = (symptom: string, severity: string): string => {
-    if (severity === "severe" || emergencySymptoms.some((s) => symptom.toLowerCase().includes(s.toLowerCase()))) {
-      return "Seek immediate medical attention"
-    } else if (severity === "moderate") {
-      return "Consult a doctor within 24-48 hours"
-    }
-    return "Monitor symptoms, consult if they worsen"
-  }
-
-  const getNextSteps = (symptom: string, severity: string): string[] => {
-    const steps = ["Continue monitoring symptoms", "Maintain good hygiene"]
-    if (severity === "severe") {
-      return ["Call emergency services or visit hospital", "Do not delay medical care", ...steps]
-    } else if (severity === "moderate") {
-      return ["Book a consultation with a doctor", "Keep a symptom diary", ...steps]
-    }
-    return ["Try home remedies", "Rest and recover", ...steps]
-  }
-
-  const getRiskColor = (risk: string) => {
-    switch (risk) {
-      case "emergency":
-        return "bg-red-600"
-      case "high":
-        return "bg-red-500"
-      case "moderate":
-        return "bg-yellow-500"
-      case "low":
-        return "bg-green-500"
-      default:
-        return "bg-gray-500"
-    }
-  }
-
-  const handleAdditionalSymptomChange = (symptom: string, checked: boolean) => {
+  const handleSymptomChange = (symptom: string, checked: boolean) => {
     if (checked) {
-      setFormData((prev) => ({
-        ...prev,
-        additionalSymptoms: [...prev.additionalSymptoms, symptom],
-      }))
+      setSelectedSymptoms(prev => [...prev, symptom])
     } else {
-      setFormData((prev) => ({
-        ...prev,
-        additionalSymptoms: prev.additionalSymptoms.filter((s) => s !== symptom),
-      }))
+      setSelectedSymptoms(prev => prev.filter(s => s !== symptom))
     }
+  }
+
+  const handleSubmit = async () => {
+    let combinedSymptoms = symptomsText.trim()
+    
+    if (selectedSymptoms.length > 0) {
+      combinedSymptoms += (combinedSymptoms ? ", " : "") + selectedSymptoms.join(", ")
+    }
+
+    if (!combinedSymptoms) {
+      return
+    }
+
+    setShowResults(true)
+    setShowActions(false)
+    setExtraResult("")
+
+    try {
+      await analysisApi.execute(() => translateAndAnalyzeSymptoms(combinedSymptoms))
+      setShowActions(true)
+    } catch (error) {
+      console.error("Error analyzing symptoms:", error)
+    }
+  }
+
+  const handleWellnessGuide = async () => {
+    if (!analysisApi.data) return
+    
+    setExtraResult("")
+    try {
+      const result = await wellnessApi.execute(() => 
+        generateWellnessGuide(
+          analysisApi.data!.translatedText, 
+          analysisApi.data!.detectedLanguage
+        )
+      )
+      setExtraResult(result)
+    } catch (error) {
+      console.error("Error generating wellness guide:", error)
+    }
+  }
+
+  const handleSpecialistSearch = async () => {
+    if (!analysisApi.data) return
+    
+    setExtraResult("")
+    try {
+      const result = await specialistApi.execute(() => 
+        findSpecialistTypes(
+          analysisApi.data!.translatedText, 
+          analysisApi.data!.detectedLanguage
+        )
+      )
+      setExtraResult(result)
+    } catch (error) {
+      console.error("Error finding specialists:", error)
+    }
+  }
+
+  // TTS Control Component
+  const TTSControls = ({ text, isCompact = false }: { text: string; isCompact?: boolean }) => {
+    if (!textToSpeech.isSupported || !text.trim()) return null
+
+    return (
+      <div className={`flex items-center ${isCompact ? 'space-x-1' : 'space-x-2'}`}>
+        {!textToSpeech.isSpeaking ? (
+          <Button
+            variant="ghost"
+            size={isCompact ? "sm" : "default"}
+            onClick={() => textToSpeech.speak(text)}
+            className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            title="Listen to this content"
+          >
+            <Volume2 className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} ${isCompact ? '' : 'mr-1'}`} />
+            {!isCompact && <span className="text-sm">Listen</span>}
+          </Button>
+        ) : (
+          <div className="flex items-center space-x-1">
+            {textToSpeech.isPaused ? (
+              <Button
+                variant="ghost"
+                size={isCompact ? "sm" : "default"}
+                onClick={textToSpeech.resume}
+                className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                title="Resume playback"
+              >
+                <Play className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} ${isCompact ? '' : 'mr-1'}`} />
+                {!isCompact && <span className="text-sm">Resume</span>}
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size={isCompact ? "sm" : "default"}
+                onClick={textToSpeech.pause}
+                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                title="Pause playback"
+              >
+                <Pause className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} ${isCompact ? '' : 'mr-1'}`} />
+                {!isCompact && <span className="text-sm">Pause</span>}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size={isCompact ? "sm" : "default"}
+              onClick={textToSpeech.stop}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+              title="Stop playback"
+            >
+              <VolumeX className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} ${isCompact ? '' : 'mr-1'}`} />
+              {!isCompact && <span className="text-sm">Stop</span>}
+            </Button>
+          </div>
+        )}
+        {textToSpeech.error && (
+          <span className="text-xs text-red-500 ml-2" title={textToSpeech.error}>
+            Audio Error
+          </span>
+        )}
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-background">
       <GovtHeader />
-      {/* Header */}
-      <header className="bg-card border-b border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back to Dashboard
-              </Button>
-              <div>
-                <h1 className="text-lg font-serif font-semibold">AI Symptom Checker</h1>
-                <p className="text-sm text-muted-foreground">Get preliminary health assessment</p>
-              </div>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Badge variant="secondary">
-                <Brain className="h-3 w-3 mr-1" />
-                AI Powered
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Step {currentStep} of 4</span>
-            <span className="text-sm text-muted-foreground">
-              {currentStep === 1 && "Primary Symptom"}
-              {currentStep === 2 && "Additional Details"}
-              {currentStep === 3 && "Personal Information"}
-              {currentStep === 4 && "Assessment Results"}
-            </span>
-          </div>
-          <Progress value={(currentStep / 4) * 100} className="h-2" />
+        {/* Navigation */}
+        <div className="mb-6">
+          <Button variant="ghost" size="sm" className="text-muted-foreground">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to Dashboard
+          </Button>
         </div>
 
-        {/* Disclaimer */}
-        {currentStep === 1 && (
-          <Card className="mb-6 border-yellow-200 bg-yellow-50">
+        <header className="text-center mb-8">
+          <h1 className="text-3xl md:text-4xl font-serif font-bold text-primary mb-2">
+            AI Symptom Checker
+          </h1>
+          <p className="text-muted-foreground">AI-powered health insights. Not a medical diagnosis.</p>
+        </header>
+
+        <main className="space-y-6">
+          {/* Disclaimer */}
+          <Card className="govt-card bg-destructive/5 border-destructive/20">
             <CardContent className="pt-6">
               <div className="flex items-start space-x-3">
-                <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium text-yellow-800">Important Disclaimer</p>
-                  <p className="text-yellow-700 mt-1">
-                    This AI symptom checker provides preliminary guidance only and is not a substitute for professional
-                    medical advice. Always consult with a healthcare provider for proper diagnosis and treatment.
+                <AlertTriangle className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="font-semibold text-destructive">Important Disclaimer</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    This tool provides general information only and is not a substitute for professional medical advice. 
+                    Please consult a doctor for any health concerns.
                   </p>
                 </div>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {/* Step 1: Primary Symptom */}
-        {currentStep === 1 && (
-          <Card>
+          
+          {/* Input Section */}
+          <Card className="govt-card">
             <CardHeader>
-              <CardTitle className="font-serif">What is your main symptom?</CardTitle>
-              <CardDescription>Describe your primary concern or symptom</CardDescription>
+              <CardTitle className="font-serif">Describe Your Symptoms</CardTitle>
+              <CardDescription>
+                Enter your symptoms in any language or select from common options below
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
-                <Label htmlFor="primary-symptom">Primary Symptom</Label>
+                <Label htmlFor="symptoms-text" className="text-sm font-medium mb-2">
+                  Symptom Description
+                </Label>
                 <Textarea
-                  id="primary-symptom"
-                  placeholder="Describe your main symptom (e.g., 'I have a severe headache that started this morning')"
-                  value={formData.primarySymptom}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, primarySymptom: e.target.value }))}
-                  className="mt-2"
+                  id="symptoms-text"
+                  rows={4}
+                  className="w-full"
+                  placeholder={
+                    speechRecognition.error 
+                      ? speechRecognition.error
+                      : speechRecognition.isListening 
+                        ? "🎤 Listening... Please speak now" 
+                        : "उदा. मुझे सिरदर्द और बुखार है... (e.g., I have a headache and fever...)"
+                  }
+                  value={symptomsText}
+                  onChange={(e) => setSymptomsText(e.target.value)}
                 />
               </div>
-
-              <div>
-                <Label>How long have you had this symptom?</Label>
-                <RadioGroup
-                  value={formData.duration}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, duration: value }))}
-                  className="mt-2"
+              
+              {/* Voice Input Button - Positioned Below */}
+              <div className="flex flex-col items-center">
+                <Button
+                  type="button"
+                  variant={speechRecognition.isListening ? "destructive" : "outline"}
+                  className={`h-16 w-16 rounded-full p-0 transition-all duration-200 ${
+                    speechRecognition.isListening 
+                      ? 'animate-pulse shadow-lg shadow-destructive/25 bg-destructive text-destructive-foreground border-2 border-destructive' 
+                      : 'hover:shadow-lg hover:scale-105 border-2 border-blue-500 hover:border-blue-600'
+                  } ${!speechRecognition.isSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  title={
+                    !speechRecognition.isSupported 
+                      ? "Speech recognition not supported in this browser"
+                      : speechRecognition.isListening 
+                        ? "Click to stop listening" 
+                        : "Click to start voice input"
+                  }
+                  onClick={speechRecognition.isListening ? speechRecognition.stopListening : speechRecognition.startListening}
+                  disabled={!speechRecognition.isSupported}
                 >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="less-than-day" id="less-than-day" />
-                    <Label htmlFor="less-than-day">Less than a day</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="1-3-days" id="1-3-days" />
-                    <Label htmlFor="1-3-days">1-3 days</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="4-7-days" id="4-7-days" />
-                    <Label htmlFor="4-7-days">4-7 days</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="more-than-week" id="more-than-week" />
-                    <Label htmlFor="more-than-week">More than a week</Label>
-                  </div>
-                </RadioGroup>
+                  {speechRecognition.isListening ? (
+                    <MicOff className="h-7 w-7" />
+                  ) : (
+                    <Mic className="h-7 w-7" />
+                  )}
+                </Button>
+                
+                {/* Status Text */}
+                <div className="mt-3 text-center">
+                  {speechRecognition.isListening && (
+                    <div className="flex items-center justify-center space-x-2 text-sm text-destructive font-medium">
+                      <div className="animate-pulse h-2 w-2 bg-destructive rounded-full"></div>
+                      <span>Recording audio...</span>
+                    </div>
+                  )}
+                  {!speechRecognition.isListening && !speechRecognition.error && speechRecognition.isSupported && (
+                    <span className="text-xs text-muted-foreground">Tap to speak</span>
+                  )}
+                  {speechRecognition.error && (
+                    <div className="text-xs text-destructive max-w-xs">
+                      {speechRecognition.error}
+                    </div>
+                  )}
+                  {!speechRecognition.isSupported && (
+                    <span className="text-xs text-muted-foreground">Voice input not available</span>
+                  )}
+                </div>
               </div>
 
               <div>
-                <Label>How severe is this symptom?</Label>
-                <RadioGroup
-                  value={formData.severity}
-                  onValueChange={(value) => setFormData((prev) => ({ ...prev, severity: value }))}
-                  className="mt-2"
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="mild" id="mild" />
-                    <Label htmlFor="mild">Mild - Doesn't interfere with daily activities</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="moderate" id="moderate" />
-                    <Label htmlFor="moderate">Moderate - Some interference with activities</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="severe" id="severe" />
-                    <Label htmlFor="severe">Severe - Significantly affects daily life</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-
-              <Button
-                onClick={() => setCurrentStep(2)}
-                disabled={!formData.primarySymptom || !formData.duration || !formData.severity}
-                className="w-full"
-              >
-                Continue
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 2: Additional Symptoms */}
-        {currentStep === 2 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-serif">Any additional symptoms?</CardTitle>
-              <CardDescription>Select any other symptoms you're experiencing</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div>
-                <Label>Common symptoms (select all that apply):</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
-                  {commonSymptoms.map((symptom) => (
-                    <div key={symptom} className="flex items-center space-x-2">
+                <Label className="text-sm font-medium mb-3">Common Symptoms (select all that apply)</Label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                  {COMMON_SYMPTOMS.map((symptom) => (
+                    <div key={symptom.english} className="flex items-center space-x-2 p-3 rounded-md border bg-card hover:bg-accent/5 transition-colors">
                       <Checkbox
-                        id={symptom}
-                        checked={formData.additionalSymptoms.includes(symptom)}
-                        onCheckedChange={(checked) => handleAdditionalSymptomChange(symptom, checked as boolean)}
+                        id={symptom.english.toLowerCase().replace(/\s/g, '-')}
+                        checked={selectedSymptoms.includes(symptom.english)}
+                        onCheckedChange={(checked) => handleSymptomChange(symptom.english, checked as boolean)}
                       />
-                      <Label htmlFor={symptom} className="text-sm">
-                        {symptom}
+                      <Label 
+                        htmlFor={symptom.english.toLowerCase().replace(/\s/g, '-')}
+                        className="cursor-pointer text-sm leading-tight"
+                      >
+                        {symptom.english} / {symptom.hindi}
                       </Label>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="flex space-x-4">
-                <Button variant="outline" onClick={() => setCurrentStep(1)} className="bg-transparent">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-                <Button onClick={() => setCurrentStep(3)} className="flex-1">
-                  Continue
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 3: Personal Information */}
-        {currentStep === 3 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-serif">Personal Information</CardTitle>
-              <CardDescription>Help us provide more accurate assessment</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="age">Age</Label>
-                  <Input
-                    id="age"
-                    type="number"
-                    placeholder="Enter your age"
-                    value={formData.age}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, age: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <Label>Gender</Label>
-                  <RadioGroup
-                    value={formData.gender}
-                    onValueChange={(value) => setFormData((prev) => ({ ...prev, gender: value }))}
-                    className="mt-2"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="male" id="male" />
-                      <Label htmlFor="male">Male</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="female" id="female" />
-                      <Label htmlFor="female">Female</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value="other" id="other" />
-                      <Label htmlFor="other">Other</Label>
-                    </div>
-                  </RadioGroup>
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="medical-history">Medical History (Optional)</Label>
-                <Textarea
-                  id="medical-history"
-                  placeholder="Any chronic conditions, allergies, or previous surgeries"
-                  value={formData.medicalHistory}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, medicalHistory: e.target.value }))}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="current-medications">Current Medications (Optional)</Label>
-                <Textarea
-                  id="current-medications"
-                  placeholder="List any medications you're currently taking"
-                  value={formData.currentMedications}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, currentMedications: e.target.value }))}
-                />
-              </div>
-
-              <div className="flex space-x-4">
-                <Button variant="outline" onClick={() => setCurrentStep(2)} className="bg-transparent">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back
-                </Button>
-                <Button
-                  onClick={analyzeSymptoms}
-                  disabled={!formData.age || !formData.gender || isAnalyzing}
-                  className="flex-1"
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Brain className="h-4 w-4 mr-2 animate-spin" />
-                      Analyzing Symptoms...
-                    </>
-                  ) : (
-                    <>
-                      Get Assessment
-                      <ArrowRight className="h-4 w-4 ml-2" />
-                    </>
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Step 4: Assessment Results */}
-        {currentStep === 4 && assessment && (
-          <div className="space-y-6">
-            {/* Risk Level */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-serif flex items-center space-x-2">
-                  <CheckCircle className="h-5 w-5" />
-                  <span>Assessment Complete</span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center space-x-4 mb-4">
-                  <div
-                    className={`px-4 py-2 rounded-full text-white font-medium ${getRiskColor(assessment.riskLevel)}`}
-                  >
-                    {assessment.riskLevel.toUpperCase()} RISK
-                  </div>
-                  <div className="text-sm text-muted-foreground">{assessment.urgency}</div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Possible Conditions */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-serif">Possible Conditions</CardTitle>
-                <CardDescription>Based on your symptoms, these conditions are possible</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {assessment.primaryConditions.map((condition, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <div className="w-2 h-2 bg-primary rounded-full"></div>
-                      <span>{condition}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recommendations */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-serif">Recommendations</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {assessment.recommendations.map((rec, index) => (
-                    <div key={index} className="flex items-start space-x-2">
-                      <CheckCircle className="h-4 w-4 text-green-500 mt-0.5" />
-                      <span className="text-sm">{rec}</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Next Steps */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="font-serif">Next Steps</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {assessment.nextSteps.map((step, index) => (
-                    <div key={index} className="flex items-start space-x-2">
-                      <div className="bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
-                        {index + 1}
-                      </div>
-                      <span className="text-sm">{step}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Action Buttons */}
-                <div className="mt-6 space-y-3">
-                  {assessment.riskLevel === "high" && (
-                    <Button className="w-full bg-red-600 hover:bg-red-700">
-                      <Phone className="h-4 w-4 mr-2" />
-                      Call Emergency Services
-                    </Button>
-                  )}
-                  <Button className="w-full">
-                    <Video className="h-4 w-4 mr-2" />
-                    Book Consultation with Doctor
-                  </Button>
-                  <Button variant="outline" className="w-full bg-transparent">
-                    <Calendar className="h-4 w-4 mr-2" />
-                    Save Assessment to Health Records
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Start Over */}
-            <div className="text-center">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setCurrentStep(1)
-                  setAssessment(null)
-                  setFormData({
-                    primarySymptom: "",
-                    duration: "",
-                    severity: "",
-                    additionalSymptoms: [],
-                    age: "",
-                    gender: "",
-                    medicalHistory: "",
-                    currentMedications: "",
-                  })
-                }}
-                className="bg-transparent"
+              <Button 
+                onClick={handleSubmit}
+                disabled={analysisApi.loading || (!symptomsText.trim() && selectedSymptoms.length === 0)}
+                className="w-full"
+                size="lg"
               >
-                Start New Assessment
+                {analysisApi.loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Analyzing Symptoms...
+                  </>
+                ) : (
+                  'Analyze Symptoms'
+                )}
               </Button>
-            </div>
-          </div>
-        )}
+            </CardContent>
+          </Card>
+
+          {/* Output Section */}
+          {showResults && (
+            <Card className="govt-card border-2 border-blue-100 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100">
+                <div className="flex items-center space-x-3">
+                  <div className="h-10 w-10 bg-blue-500 rounded-full flex items-center justify-center">
+                    <Sparkles className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="font-serif text-blue-900">AI Analysis Results</CardTitle>
+                    <CardDescription className="text-blue-700">
+                      Comprehensive health assessment based on your symptoms
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-6">
+                {analysisApi.loading && (
+                  <div className="flex justify-center py-12">
+                    <div className="text-center">
+                      <div className="relative">
+                        <div className="h-16 w-16 border-4 border-blue-200 rounded-full mx-auto mb-6"></div>
+                        <Loader2 className="h-16 w-16 animate-spin text-blue-500 absolute top-0 left-1/2 transform -translate-x-1/2" />
+                      </div>
+                      <p className="text-muted-foreground text-lg">Analyzing your symptoms...</p>
+                      <p className="text-sm text-blue-600 mt-2">This may take a few seconds</p>
+                    </div>
+                  </div>
+                )}
+                
+                {analysisApi.error && (
+                  <div className="bg-red-50 border-2 border-red-200 p-6 rounded-xl">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <AlertTriangle className="h-6 w-6 text-red-500" />
+                      <p className="text-red-700 font-semibold text-lg">Analysis Error</p>
+                    </div>
+                    <p className="text-red-600 mb-2">
+                      Sorry, we encountered an issue while analyzing your symptoms. Please try again.
+                    </p>
+                    <details className="mt-3">
+                      <summary className="text-sm text-red-500 cursor-pointer hover:text-red-700">
+                        Technical Details
+                      </summary>
+                      <p className="text-xs text-red-400 mt-2 font-mono bg-red-100 p-2 rounded">
+                        {analysisApi.error}
+                      </p>
+                    </details>
+                  </div>
+                )}
+                
+                {analysisApi.data && (
+                  <div className="space-y-4">
+                    <div className="bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200 p-6 rounded-xl">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="h-8 w-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <Sparkles className="h-4 w-4 text-white" />
+                          </div>
+                          <h3 className="text-lg font-semibold text-green-800">Health Assessment</h3>
+                        </div>
+                        <TTSControls text={analysisApi.data.translatedAnalysis} />
+                      </div>
+                      <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed text-base">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          rehypePlugins={[rehypeRaw]}
+                          components={{
+                            h1: ({children}) => <h1 className="text-xl font-bold mb-3 text-gray-900">{children}</h1>,
+                            h2: ({children}) => <h2 className="text-lg font-semibold mb-2 text-gray-800">{children}</h2>,
+                            h3: ({children}) => <h3 className="text-md font-medium mb-2 text-gray-800">{children}</h3>,
+                            p: ({children}) => <p className="mb-3 leading-relaxed">{children}</p>,
+                            ul: ({children}) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+                            ol: ({children}) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+                            li: ({children}) => <li className="ml-2">{children}</li>,
+                            strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                            em: ({children}) => <em className="italic text-gray-700">{children}</em>,
+                            blockquote: ({children}) => <blockquote className="border-l-4 border-blue-300 pl-4 italic text-gray-600 my-4">{children}</blockquote>,
+                            code: ({children}) => <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm font-mono">{children}</code>,
+                            pre: ({children}) => <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto text-sm">{children}</pre>
+                          }}
+                        >
+                          {analysisApi.data.translatedAnalysis}
+                        </ReactMarkdown>
+                      </div>
+                    </div>
+                    
+                    {analysisApi.data.detectedLanguage && analysisApi.data.detectedLanguage !== 'en' && (
+                      <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                          <div className="h-2 w-2 bg-blue-500 rounded-full"></div>
+                          <p className="text-sm text-blue-700">
+                            <span className="font-medium">Language Detected:</span> {analysisApi.data.detectedLanguage.toUpperCase()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+              
+          {/* Wellness and Specialist Features */}
+          {showActions && analysisApi.data && (
+            <Card className="govt-card">
+              <CardHeader>
+                <CardTitle className="font-serif text-center">Next Steps & Wellness Support</CardTitle>
+                <CardDescription className="text-center">
+                  Get personalized recommendations and find appropriate healthcare specialists
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Button
+                    onClick={handleWellnessGuide}
+                    disabled={wellnessApi.loading}
+                    variant="secondary"
+                    className="w-full"
+                    size="lg"
+                  >
+                    {wellnessApi.loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Generating Guide...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Generate 3-Day Wellness Guide
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={handleSpecialistSearch}
+                    disabled={specialistApi.loading}
+                    variant="outline"
+                    className="w-full"
+                    size="lg"
+                  >
+                    {specialistApi.loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Searching...
+                      </>
+                    ) : (
+                      <>
+                        <Search className="h-4 w-4 mr-2" />
+                        Find Local Specialist Types
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {(wellnessApi.loading || specialistApi.loading) && (
+                  <div className="flex justify-center py-4">
+                    <div className="text-center">
+                      <Loader2 className="h-6 w-6 animate-spin text-primary mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">Processing request...</p>
+                    </div>
+                  </div>
+                )}
+                
+                {extraResult && (
+                  <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg mt-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-800">Additional Information</h4>
+                      <TTSControls text={extraResult} isCompact={true} />
+                    </div>
+                    <div className="prose prose-sm max-w-none text-sm leading-relaxed">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeRaw]}
+                        components={{
+                          h1: ({children}) => <h1 className="text-lg font-bold mb-3 text-gray-900">{children}</h1>,
+                          h2: ({children}) => <h2 className="text-md font-semibold mb-2 text-gray-800">{children}</h2>,
+                          h3: ({children}) => <h3 className="text-sm font-medium mb-2 text-gray-800">{children}</h3>,
+                          p: ({children}) => <p className="mb-3 leading-relaxed">{children}</p>,
+                          ul: ({children}) => <ul className="list-disc list-inside mb-3 space-y-1">{children}</ul>,
+                          ol: ({children}) => <ol className="list-decimal list-inside mb-3 space-y-1">{children}</ol>,
+                          li: ({children}) => <li className="ml-2">{children}</li>,
+                          strong: ({children}) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                          em: ({children}) => <em className="italic text-gray-700">{children}</em>,
+                          blockquote: ({children}) => <blockquote className="border-l-4 border-primary/40 pl-4 italic text-gray-600 my-4">{children}</blockquote>,
+                          code: ({children}) => <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-xs font-mono">{children}</code>,
+                          pre: ({children}) => <pre className="bg-gray-100 p-3 rounded-lg overflow-x-auto text-xs">{children}</pre>
+                        }}
+                      >
+                        {extraResult}
+                      </ReactMarkdown>
+                    </div>
+                  </div>
+                )}
+                
+                {(wellnessApi.error || specialistApi.error) && (
+                  <div className="bg-destructive/5 border border-destructive/20 p-4 rounded-lg mt-4">
+                    <p className="text-destructive font-medium">Request Error</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {wellnessApi.error || specialistApi.error}
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </main>
       </div>
     </div>
   )
