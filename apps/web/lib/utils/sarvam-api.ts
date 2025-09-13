@@ -7,9 +7,7 @@ export interface SarvamSTTResponse {
 }
 
 export interface SarvamTTSResponse {
-  audios: Array<{
-    audio: string // base64 encoded audio
-  }>
+  audios: string[] // Array of base64 encoded audio strings
 }
 
 // Convert audio to WAV format for better compatibility
@@ -157,6 +155,21 @@ export async function speechToText(audioBlob: Blob): Promise<SarvamSTTResponse> 
   throw new Error('All audio format attempts failed')
 }
 
+// Language code mapping for Sarvam TTS API
+const LANGUAGE_CODE_MAPPING: Record<string, string> = {
+  'en': 'en-IN',
+  'hi': 'hi-IN', 
+  'pa': 'pa-IN',
+  'bn': 'bn-IN',
+  'gu': 'gu-IN',
+  'kn': 'kn-IN',
+  'ml': 'ml-IN',
+  'mr': 'mr-IN',
+  'od': 'od-IN',
+  'ta': 'ta-IN',
+  'te': 'te-IN'
+}
+
 // Text to Speech
 export async function textToSpeech(
   text: string, 
@@ -167,6 +180,22 @@ export async function textToSpeech(
     throw new Error("Sarvam API key not configured")
   }
 
+  // Validate and limit text length to 500 characters as per API requirement
+  if (text.length > 500) {
+    const originalLength = text.length
+    // Try to truncate at word boundary to avoid cutting words
+    let truncatedText = text.substring(0, 500)
+    const lastSpaceIndex = truncatedText.lastIndexOf(' ')
+    if (lastSpaceIndex > 400) { // Only use word boundary if it's not too early
+      truncatedText = truncatedText.substring(0, lastSpaceIndex)
+    }
+    text = truncatedText
+    console.warn(`Text truncated from ${originalLength} to ${text.length} characters for Sarvam TTS API`)
+  }
+
+  // Map language code to Sarvam API format
+  const targetLanguageCode = LANGUAGE_CODE_MAPPING[language] || 'hi-IN'
+
   const response = await fetch(`${SARVAM_BASE_URL}/text-to-speech`, {
     method: 'POST',
     headers: {
@@ -175,7 +204,7 @@ export async function textToSpeech(
     },
     body: JSON.stringify({
       inputs: [text],
-      target_language_code: language,
+      target_language_code: targetLanguageCode,
       speaker: speaker,
       pitch: 0,
       pace: 1.0,
@@ -188,15 +217,52 @@ export async function textToSpeech(
 
   if (!response.ok) {
     const errorText = await response.text()
+    console.error('Sarvam TTS API Error Details:', {
+      status: response.status,
+      targetLanguageCode,
+      textLength: text.length,
+      speaker,
+      error: errorText
+    })
     throw new Error(`Sarvam TTS API error: ${response.status} - ${errorText}`)
   }
 
-  const result: SarvamTTSResponse = await response.json()
+  let result: SarvamTTSResponse
+  try {
+    const responseText = await response.text()
+    console.log('Raw Sarvam TTS API Response:', responseText.substring(0, 500))
+    result = JSON.parse(responseText)
+    console.log('Parsed Sarvam TTS API Response:', JSON.stringify(result, null, 2))
+  } catch (jsonError) {
+    console.error('Failed to parse JSON response:', {
+      status: response.status,
+      error: jsonError instanceof Error ? jsonError.message : String(jsonError)
+    })
+    throw new Error(`Invalid JSON response from Sarvam TTS API`)
+  }
+  
   if (!result.audios || result.audios.length === 0) {
     throw new Error("No audio generated from Sarvam TTS")
   }
   
-  return result.audios[0].audio // Returns base64 encoded audio
+  const audioData = result.audios[0]
+  
+  if (!audioData || typeof audioData !== 'string') {
+    console.error('Invalid audio data in response:', {
+      audiosLength: result.audios.length,
+      firstAudio: result.audios[0],
+      audioDataType: typeof audioData
+    })
+    throw new Error("Invalid or missing audio data in Sarvam TTS response")
+  }
+  
+  console.log('Sarvam TTS API Response:', {
+    audioLength: audioData.length,
+    hasAudio: !!audioData,
+    audioPreview: audioData.substring(0, 20) + '...'
+  })
+  
+  return audioData // Returns base64 encoded audio
 }
 
 // Helper function to convert audio blob to proper format for Sarvam API

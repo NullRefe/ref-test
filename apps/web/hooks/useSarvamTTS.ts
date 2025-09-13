@@ -38,14 +38,60 @@ export function useSarvamTTS() {
       // Generate audio using Sarvam AI
       const audioBase64 = await textToSpeech(text, language)
       
+      // Validate that we received audio data
+      if (!audioBase64 || typeof audioBase64 !== 'string') {
+        throw new Error('No audio data received from Sarvam TTS API')
+      }
+      
+      // Debug: Log the base64 response
+      console.log('Received base64 data:', {
+        length: audioBase64.length,
+        firstChars: audioBase64.substring(0, 50),
+        lastChars: audioBase64.substring(audioBase64.length - 50)
+      })
+      
+      // Clean and validate base64 string
+      let cleanedBase64 = audioBase64
+      
+      // Remove data URL prefix if present (e.g., "data:audio/wav;base64,")
+      if (cleanedBase64.includes(',')) {
+        cleanedBase64 = cleanedBase64.split(',')[1]
+      }
+      
+      // Remove any whitespace, newlines, or invalid characters
+      cleanedBase64 = cleanedBase64.replace(/[^A-Za-z0-9+/=]/g, '')
+      
+      // Validate base64 format
+      if (!cleanedBase64 || cleanedBase64.length === 0) {
+        throw new Error('Invalid or empty base64 audio data received')
+      }
+      
+      // Add padding if necessary
+      while (cleanedBase64.length % 4) {
+        cleanedBase64 += '='
+      }
+      
       // Convert base64 to blob and create audio URL
-      const binaryString = atob(audioBase64)
+      let binaryString: string
+      try {
+        binaryString = atob(cleanedBase64)
+      } catch (error) {
+        console.error('Failed to decode base64 audio data:', {
+          error: error instanceof Error ? error.message : String(error),
+          originalLength: audioBase64.length,
+          cleanedLength: cleanedBase64.length,
+          sample: cleanedBase64.substring(0, 100)
+        })
+        throw new Error('Invalid base64 audio data format')
+      }
+      
       const bytes = new Uint8Array(binaryString.length)
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i)
       }
       
-      const audioBlob = new Blob([bytes], { type: 'audio/wav' })
+      // Create audio blob (Sarvam API typically returns MP3 format)
+      const audioBlob = new Blob([bytes], { type: 'audio/mpeg' })
       const audioUrl = URL.createObjectURL(audioBlob)
       currentAudioUrlRef.current = audioUrl
       
