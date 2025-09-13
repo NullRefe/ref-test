@@ -6,8 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { useApiState, useSpeechRecognition } from "@/hooks/useSymptomChecker"
-import { useTextToSpeech } from "@/hooks/useTextToSpeech"
+import { useSarvamSpeechRecognition } from "@/hooks/useSarvamSpeechRecognition"
+import { useSarvamTTS } from "@/hooks/useSarvamTTS"
+import { useApiState } from "@/hooks/useSymptomChecker"
 import { SymptomAnalysis } from "@/lib/types/symptom-checker"
 import {
   COMMON_SYMPTOMS,
@@ -29,17 +30,25 @@ export function SymptomChecker() {
   const [extraResult, setExtraResult] = useState("")
   
   // Custom hooks
-  const speechRecognition = useSpeechRecognition()
+  const speechRecognition = useSarvamSpeechRecognition()
   const analysisApi = useApiState<SymptomAnalysis>()
   const wellnessApi = useApiState<string>()
   const specialistApi = useApiState<string>()
-  const textToSpeech = useTextToSpeech()
+  const textToSpeech = useSarvamTTS()
 
   useEffect(() => {
     if (speechRecognition.transcript) {
       setSymptomsText(speechRecognition.transcript)
     }
   }, [speechRecognition.transcript])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      speechRecognition.cleanup()
+      textToSpeech.cleanup()
+    }
+  }, [speechRecognition.cleanup, textToSpeech.cleanup])
 
   const handleSymptomChange = (symptom: string, checked: boolean) => {
     if (checked) {
@@ -107,21 +116,35 @@ export function SymptomChecker() {
   }
 
   // TTS Control Component
-  const TTSControls = ({ text, isCompact = false }: { text: string; isCompact?: boolean }) => {
+  const TTSControls = ({ text, language = 'hi', isCompact = false }: { 
+    text: string; 
+    language?: string;
+    isCompact?: boolean 
+  }) => {
     if (!textToSpeech.isSupported || !text.trim()) return null
 
     return (
       <div className={`flex items-center ${isCompact ? 'space-x-1' : 'space-x-2'}`}>
-        {!textToSpeech.isSpeaking ? (
+        {!textToSpeech.isSpeaking && !textToSpeech.isGenerating ? (
           <Button
             variant="ghost"
             size={isCompact ? "sm" : "default"}
-            onClick={() => textToSpeech.speak(text)}
+            onClick={() => textToSpeech.speak(text, language)}
             className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
             title="Listen to this content"
           >
             <Volume2 className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} ${isCompact ? '' : 'mr-1'}`} />
             {!isCompact && <span className="text-sm">Listen</span>}
+          </Button>
+        ) : textToSpeech.isGenerating ? (
+          <Button
+            variant="ghost"
+            size={isCompact ? "sm" : "default"}
+            disabled
+            className="text-blue-600"
+          >
+            <Loader2 className={`${isCompact ? 'h-4 w-4' : 'h-5 w-5'} animate-spin ${isCompact ? '' : 'mr-1'}`} />
+            {!isCompact && <span className="text-sm">Generating...</span>}
           </Button>
         ) : (
           <div className="flex items-center space-x-1">
@@ -225,8 +248,8 @@ export function SymptomChecker() {
                   placeholder={
                     speechRecognition.error 
                       ? speechRecognition.error
-                      : speechRecognition.isListening 
-                        ? "🎤 Listening... Please speak now" 
+                      : speechRecognition.isRecording 
+                        ? "🎤 Recording... Please speak now" 
                         : "उदा. मुझे सिरदर्द और बुखार है... (e.g., I have a headache and fever...)"
                   }
                   value={symptomsText}
@@ -238,23 +261,29 @@ export function SymptomChecker() {
               <div className="flex flex-col items-center">
                 <Button
                   type="button"
-                  variant={speechRecognition.isListening ? "destructive" : "outline"}
+                  variant={(speechRecognition.isRecording || speechRecognition.isProcessing) ? "destructive" : "outline"}
                   className={`h-16 w-16 rounded-full p-0 transition-all duration-200 ${
-                    speechRecognition.isListening 
-                      ? 'animate-pulse shadow-lg shadow-destructive/25 bg-destructive text-destructive-foreground border-2 border-destructive' 
-                      : 'hover:shadow-lg hover:scale-105 border-2 border-blue-500 hover:border-blue-600'
+                    speechRecognition.isRecording 
+                      ? 'animate-pulse shadow-lg shadow-destructive/25 bg-destructive text-destructive-foreground border-2 border-destructive'
+                      : speechRecognition.isProcessing
+                        ? 'animate-pulse bg-blue-500 text-white border-2 border-blue-500'
+                        : 'hover:shadow-lg hover:scale-105 border-2 border-blue-500 hover:border-blue-600'
                   } ${!speechRecognition.isSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
                   title={
                     !speechRecognition.isSupported 
                       ? "Speech recognition not supported in this browser"
-                      : speechRecognition.isListening 
-                        ? "Click to stop listening" 
-                        : "Click to start voice input"
+                      : speechRecognition.isProcessing
+                        ? "Processing speech..."
+                        : speechRecognition.isRecording 
+                          ? "Click to stop recording" 
+                          : "Click to start voice input"
                   }
-                  onClick={speechRecognition.isListening ? speechRecognition.stopListening : speechRecognition.startListening}
-                  disabled={!speechRecognition.isSupported}
+                  onClick={speechRecognition.isRecording ? speechRecognition.stopRecording : speechRecognition.startRecording}
+                  disabled={!speechRecognition.isSupported || speechRecognition.isProcessing}
                 >
-                  {speechRecognition.isListening ? (
+                  {speechRecognition.isProcessing ? (
+                    <Loader2 className="h-7 w-7 animate-spin" />
+                  ) : speechRecognition.isRecording ? (
                     <MicOff className="h-7 w-7" />
                   ) : (
                     <Mic className="h-7 w-7" />
@@ -263,13 +292,19 @@ export function SymptomChecker() {
                 
                 {/* Status Text */}
                 <div className="mt-3 text-center">
-                  {speechRecognition.isListening && (
+                  {speechRecognition.isRecording && (
                     <div className="flex items-center justify-center space-x-2 text-sm text-destructive font-medium">
                       <div className="animate-pulse h-2 w-2 bg-destructive rounded-full"></div>
                       <span>Recording audio...</span>
                     </div>
                   )}
-                  {!speechRecognition.isListening && !speechRecognition.error && speechRecognition.isSupported && (
+                  {speechRecognition.isProcessing && (
+                    <div className="flex items-center justify-center space-x-2 text-sm text-blue-600 font-medium">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Processing speech...</span>
+                    </div>
+                  )}
+                  {!speechRecognition.isRecording && !speechRecognition.isProcessing && !speechRecognition.error && speechRecognition.isSupported && (
                     <span className="text-xs text-muted-foreground">Tap to speak</span>
                   )}
                   {speechRecognition.error && (
@@ -382,7 +417,10 @@ export function SymptomChecker() {
                           </div>
                           <h3 className="text-lg font-semibold text-green-800">Health Assessment</h3>
                         </div>
-                        <TTSControls text={analysisApi.data.translatedAnalysis} />
+                        <TTSControls 
+                          text={analysisApi.data.translatedAnalysis} 
+                          language={analysisApi.data.detectedLanguage === 'en' ? 'en' : 'hi'}
+                        />
                       </div>
                       <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed text-base">
                         <ReactMarkdown
@@ -488,7 +526,11 @@ export function SymptomChecker() {
                   <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg mt-4">
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="text-sm font-semibold text-gray-800">Additional Information</h4>
-                      <TTSControls text={extraResult} isCompact={true} />
+                      <TTSControls 
+                        text={extraResult} 
+                        language={analysisApi.data?.detectedLanguage === 'en' ? 'en' : 'hi'}
+                        isCompact={true} 
+                      />
                     </div>
                     <div className="prose prose-sm max-w-none text-sm leading-relaxed">
                       <ReactMarkdown
