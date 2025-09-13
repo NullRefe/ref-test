@@ -74,10 +74,13 @@ export function SymptomChecker() {
     setExtraResult("")
 
     try {
+      console.log("Starting symptom analysis for:", combinedSymptoms)
       await analysisApi.execute(() => translateAndAnalyzeSymptoms(combinedSymptoms))
+      console.log("Symptom analysis completed successfully")
       setShowActions(true)
     } catch (error) {
       console.error("Error analyzing symptoms:", error)
+      // The error will be handled by the analysisApi.error state
     }
   }
 
@@ -393,9 +396,28 @@ export function SymptomChecker() {
                       <AlertTriangle className="h-6 w-6 text-red-500" />
                       <p className="text-red-700 font-semibold text-lg">Analysis Error</p>
                     </div>
-                    <p className="text-red-600 mb-2">
-                      Sorry, we encountered an issue while analyzing your symptoms. Please try again.
+                    <p className="text-red-600 mb-4">
+                      Sorry, we encountered an issue while analyzing your symptoms. This could be due to a temporary network issue or high server load.
                     </p>
+                    <div className="flex items-center space-x-3 mb-4">
+                      <Button 
+                        onClick={handleSubmit}
+                        variant="outline"
+                        className="bg-white hover:bg-red-50 border-red-300 text-red-700"
+                      >
+                        Try Again
+                      </Button>
+                      <Button 
+                        onClick={() => {
+                          setShowResults(false)
+                          analysisApi.reset()
+                        }}
+                        variant="ghost"
+                        className="text-red-600 hover:bg-red-50"
+                      >
+                        Go Back
+                      </Button>
+                    </div>
                     <details className="mt-3">
                       <summary className="text-sm text-red-500 cursor-pointer hover:text-red-700">
                         Technical Details

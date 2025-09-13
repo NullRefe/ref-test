@@ -14,23 +14,42 @@ export interface SarvamTTSResponse {
 
 // Convert audio to WAV format for better compatibility
 async function convertToWav(audioBlob: Blob): Promise<Blob> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     try {
+      // Check if we have the necessary APIs
+      if (!window.AudioContext && !(window as any).webkitAudioContext) {
+        console.warn('AudioContext not available, using original blob')
+        resolve(audioBlob)
+        return
+      }
+
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
       const fileReader = new FileReader()
       
       fileReader.onload = async (e) => {
         try {
           const arrayBuffer = e.target?.result as ArrayBuffer
+          if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+            console.warn('Empty audio buffer, using original blob')
+            resolve(audioBlob)
+            return
+          }
+
           const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
           
           // Convert to WAV format
           const wavBlob = audioBufferToWav(audioBuffer)
+          console.log('Successfully converted to WAV:', wavBlob.size, 'bytes')
           resolve(wavBlob)
         } catch (error) {
-          console.warn('Audio conversion failed:', error)
-          // If conversion fails, try the original blob
+          console.warn('Audio decoding/conversion failed:', error)
+          // If conversion fails, use the original blob
           resolve(audioBlob)
+        } finally {
+          // Clean up audio context
+          if (audioContext.state !== 'closed') {
+            audioContext.close().catch(() => {})
+          }
         }
       }
       
@@ -67,16 +86,42 @@ export async function speechToText(audioBlob: Blob): Promise<SarvamSTTResponse> 
 
   // Try multiple format approaches
   const formats = [
-    { blob: audioBlob, name: 'original', ext: audioBlob.type.includes('mp4') ? '.mp4' : audioBlob.type.includes('webm') ? '.webm' : '.mp4' }
+    { blob: audioBlob, name: 'original' },
+    { blob: await convertToWav(audioBlob), name: 'wav-converted' }
   ]
 
   for (const format of formats) {
     try {
+      // Determine appropriate file extension and MIME type
+      let filename = 'audio.wav'
+      let mimeType = 'audio/wav'
+      
+      if (format.name === 'original') {
+        if (format.blob.type.includes('webm')) {
+          filename = 'audio.webm'
+          mimeType = 'audio/webm'
+        } else if (format.blob.type.includes('mp4')) {
+          filename = 'audio.mp4'
+          mimeType = 'audio/mp4'
+        } else if (format.blob.type.includes('ogg')) {
+          filename = 'audio.ogg'
+          mimeType = 'audio/ogg'
+        }
+      }
+
+      // Create a new blob with clean MIME type (without codec specifications)
+      const cleanBlob = new Blob([format.blob], { type: mimeType })
+
       const formData = new FormData()
-      formData.append('file', format.blob, `audio${format.ext}`)
+      formData.append('file', cleanBlob, filename)
       formData.append('model', 'saarika:v2.5')
 
-      console.log(`Trying ${format.name} format:`, { type: format.blob.type, size: format.blob.size })
+      console.log(`Trying ${format.name} format:`, { 
+        originalType: format.blob.type, 
+        cleanType: cleanBlob.type,
+        filename,
+        size: cleanBlob.size 
+      })
 
       const response = await fetch(`${SARVAM_BASE_URL}/speech-to-text`, {
         method: 'POST',
@@ -88,6 +133,7 @@ export async function speechToText(audioBlob: Blob): Promise<SarvamSTTResponse> 
 
       if (response.ok) {
         const result = await response.json()
+        console.log(`Success with ${format.name} format`)
         return result
       } else {
         const errorText = await response.text()
