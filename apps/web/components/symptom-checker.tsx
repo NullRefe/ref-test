@@ -201,7 +201,7 @@ export function SymptomChecker() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Navigation */}
         <div className="mb-6">
-          <Button variant="ghost" size="sm" className="text-muted-foreground">
+          <Button onClick ={ () => {window.location.href = "/dashboard" }} variant="ghost" size="sm" className="text-muted-foreground">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Dashboard
           </Button>

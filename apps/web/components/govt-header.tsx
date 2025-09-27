@@ -3,11 +3,16 @@
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
-import { Globe, Mail, Menu, Phone, Search, User } from "lucide-react"
+import { useBreadcrumbs } from "@/lib/utils/breadcrumb"
+import { Globe, LogOut, Mail, Menu, Phone, Search, User } from "lucide-react"
+import Link from "next/link"
 
 export function GovtHeader() {
   const { t } = useLanguage()
+  const { isLoggedIn, user, logout } = useAuth()
+  const breadcrumbs = useBreadcrumbs()
 
   return (
     <div className="w-full">
@@ -25,7 +30,7 @@ export function GovtHeader() {
             </div>
           </div>
           <div className="flex items-center space-x-4">
-            <LanguageSwitcher />
+            <LanguageSwitcher variant="compact" />
             <Badge variant="secondary" className="govt-badge">
               <Globe className="h-3 w-3 mr-1" />
               भारत सरकार | Government of India
@@ -50,18 +55,6 @@ export function GovtHeader() {
               </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="hidden md:flex items-center space-x-8">
-              <Button variant="ghost" className="text-foreground hover:text-primary">
-                Home
-              </Button>
-              <Button variant="ghost" className="text-foreground hover:text-primary">
-                Services
-              </Button>
-              <Button variant="ghost" className="text-foreground hover:text-primary">
-                Contact
-              </Button>
-            </nav>
 
             {/* User Actions */}
             <div className="flex items-center space-x-4">
@@ -69,10 +62,24 @@ export function GovtHeader() {
                 <Search className="h-4 w-4 mr-2" />
                 Search
               </Button>
-              <Button variant="default" size="sm">
-                <User className="h-4 w-4 mr-2" />
-                Login
-              </Button>
+              {isLoggedIn ? (
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-muted-foreground hidden sm:inline">
+                    Welcome, {user?.name || 'User'}
+                  </span>
+                  <Button variant="outline" size="sm" onClick={logout}>
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </Button>
+                </div>
+              ) : (
+                <Link href="/">
+                  <Button variant="default" size="sm">
+                    <User className="h-4 w-4 mr-2" />
+                    Login
+                  </Button>
+                </Link>
+              )}
               <Button variant="ghost" size="sm" className="md:hidden">
                 <Menu className="h-4 w-4" />
               </Button>
@@ -84,8 +91,26 @@ export function GovtHeader() {
       {/* Breadcrumb */}
       <div className="bg-muted py-2 px-4">
         <div className="max-w-7xl mx-auto">
-          <nav className="text-sm text-muted-foreground">
-            <span>Home</span> / <span>Telemedicine Services</span> / <span className="text-foreground">Dashboard</span>
+          <nav className="text-sm text-muted-foreground" aria-label="Breadcrumb">
+            <ol className="flex items-center space-x-2">
+              {breadcrumbs.map((breadcrumb, index) => (
+                <li key={breadcrumb.href} className="flex items-center">
+                  {index > 0 && <span className="mx-2">/</span>}
+                  {breadcrumb.isCurrentPage ? (
+                    <span className="text-foreground font-medium" aria-current="page">
+                      {breadcrumb.label}
+                    </span>
+                  ) : (
+                    <Link 
+                      href={breadcrumb.href}
+                      className="hover:text-foreground transition-colors"
+                    >
+                      {breadcrumb.label}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ol>
           </nav>
         </div>
       </div>

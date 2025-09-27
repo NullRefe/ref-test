@@ -10,6 +10,7 @@ const healthRecordsRoutes = require("./routes/healthRecords");
 const consultationRoutes = require("./routes/consultations");
 const pharmacyRoutes = require("./routes/pharmacy");
 const userRoutes = require("./routes/users");
+const medicationsRoutes = require("./routes/medications");
 
 const errorHandler = require("./middleware/errorHandler");
 const { validateRequest } = require("./middleware/validation");
@@ -61,6 +62,7 @@ app.use("/api/health-records", healthRecordsRoutes);
 app.use("/api/consultations", consultationRoutes);
 app.use("/api/pharmacy", pharmacyRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/medications", medicationsRoutes);
 
 // 404 handler
 app.use("*", (req, res) => {

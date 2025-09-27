@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useLanguage } from "@/contexts/language-context"
-import { Bell, Brain, Calendar, Clock, FileText, HelpCircle, LogOut, Phone, Pill, Shield, Video } from "lucide-react"
+import { Bell, Brain, Calendar, Clock, FileText, Grid3x3, HelpCircle, LogOut, Phone, Pill, Shield, Users, Video, Zap } from "lucide-react"
 import { useState } from "react"
 
 interface Consultation {
@@ -20,6 +20,7 @@ interface Consultation {
 
 export function PatientDashboard() {
   const { t } = useLanguage()
+  const [isExpanded, setIsExpanded] = useState(false)
   const [consultations] = useState<Consultation[]>([
     {
       id: "1",
@@ -110,7 +111,9 @@ export function PatientDashboard() {
                 <CardDescription>{t.dashboard.accessHealthcareServices}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className={`grid gap-4 transition-all duration-300 ${
+                  isExpanded ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
+                }`}>
                   <Button
                     className="h-24 flex-col space-y-2 bg-primary/5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
                     variant="outline"
@@ -142,6 +145,48 @@ export function PatientDashboard() {
                   >
                     <Brain className="h-6 w-6" />
                     <span className="text-sm font-medium">{t.dashboard.symptomChecker}</span>
+                  </Button>
+                  
+                  {/* Additional features shown when expanded */}
+                  {isExpanded && (
+                    <>
+                      <Button
+                        className="h-24 flex-col space-y-2 bg-primary/5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
+                        variant="outline"
+                        onClick={() => (window.location.href = "/medicine")}
+                      >
+                        <Pill className="h-6 w-6" />
+                        <span className="text-sm font-medium">Medicine Tracker</span>
+                      </Button>
+                      <Button
+                        className="h-24 flex-col space-y-2 bg-primary/5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
+                        variant="outline"
+                        onClick={() => (window.location.href = "/community-health")}
+                      >
+                        <Users className="h-6 w-6" />
+                        <span className="text-sm font-medium">Community Health</span>
+                      </Button>
+                      <Button
+                        className="h-24 flex-col space-y-2 bg-primary/5 border-primary/20 hover:bg-primary hover:text-primary-foreground"
+                        variant="outline"
+                        onClick={() => (window.location.href = "/ambulance")}
+                      >
+                        <Zap className="h-6 w-6" />
+                        <span className="text-sm font-medium">Emergency Services</span>
+                      </Button>
+                    </>
+                  )}
+                  
+                  {/* See All Features / Collapse button */}
+                  <Button
+                    className="h-24 flex-col space-y-2 bg-secondary/10 border-secondary/20 hover:bg-secondary hover:text-secondary-foreground"
+                    variant="outline"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                  >
+                    <Grid3x3 className="h-6 w-6" />
+                    <span className="text-sm font-medium">
+                      {isExpanded ? "Show Less" : "See All Features"}
+                    </span>
                   </Button>
                 </div>
               </CardContent>

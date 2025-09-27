@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useAuth } from "@/contexts/auth-context"
 import { useLanguage } from "@/contexts/language-context"
 import { languageNames, supportedLanguages } from "@/lib/i18n"
 import { Globe, Heart, Lock, Mail, Phone, Shield, User } from "lucide-react"
@@ -20,12 +21,23 @@ export function LoginForm() {
   const [userType, setUserType] = useState<"patient" | "medical-staff">("patient")
   const [medicalRole, setMedicalRole] = useState<string>("")
   const { t } = useLanguage()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 2000))
+    
+    // Create user object and login
+    const userData = {
+      id: "user123",
+      name: userType === "patient" ? "Ramesh Kumar" : "Dr. Priya Sharma",
+      type: userType,
+      phone: "+91-9876543210"
+    }
+    
+    login(userData)
     // Redirect to dashboard after successful login
     window.location.href = "/dashboard"
     setIsLoading(false)

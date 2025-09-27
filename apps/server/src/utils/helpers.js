@@ -102,6 +102,124 @@ const getPaginationMeta = (page, limit, total) => {
   };
 };
 
+/**
+ * Calculate medication adherence based on reminder times
+ */
+const calculateMedicationAdherence = (medication, takenDates = []) => {
+  if (!medication.start_date || !medication.reminder_times) {
+    return { adherence_rate: 0, total_doses: 0, taken_doses: 0 };
+  }
+
+  const startDate = new Date(medication.start_date);
+  const endDate = medication.end_date
+    ? new Date(medication.end_date)
+    : new Date();
+  const today = new Date();
+  const actualEndDate = endDate < today ? endDate : today;
+
+  // Calculate days between start and end
+  const daysDiff =
+    Math.ceil((actualEndDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+  const reminderTimesPerDay = medication.reminder_times.length;
+  const totalDoses = daysDiff * reminderTimesPerDay;
+  const takenDoses = takenDates.length;
+
+  return {
+    adherence_rate:
+      totalDoses > 0 ? Math.round((takenDoses / totalDoses) * 100) : 0,
+    total_doses: totalDoses,
+    taken_doses: takenDoses,
+    days_active: daysDiff,
+  };
+};
+
+/**
+ * Check if medication needs refill
+ */
+const checkMedicationRefillStatus = (medication, daysThreshold = 7) => {
+  if (!medication.refills_remaining || !medication.end_date) {
+    return { needs_refill: false, days_until_empty: null };
+  }
+
+  const endDate = new Date(medication.end_date);
+  const today = new Date();
+  const daysUntilEmpty = Math.ceil((endDate - today) / (1000 * 60 * 60 * 24));
+
+  return {
+    needs_refill:
+      daysUntilEmpty <= daysThreshold && medication.refills_remaining > 0,
+    days_until_empty: daysUntilEmpty,
+    refills_remaining: medication.refills_remaining,
+  };
+};
+
+/**
+ * Parse and validate reminder times
+ */
+const validateReminderTimes = (reminderTimes) => {
+  if (!Array.isArray(reminderTimes)) {
+    return { valid: false, message: "Reminder times must be an array" };
+  }
+
+  const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+
+  for (const time of reminderTimes) {
+    if (!timeRegex.test(time)) {
+      return {
+        valid: false,
+        message: `Invalid time format: ${time}. Use HH:MM format (24-hour)`,
+      };
+    }
+  }
+
+  return { valid: true, message: "Valid reminder times" };
+};
+
+/**
+ * Generate medication dosage instructions
+ */
+const generateDosageInstructions = (medication) => {
+  const { dosage, frequency, instructions } = medication;
+  let instruction = "";
+
+  if (dosage) instruction += `Take ${dosage}`;
+  if (frequency) instruction += ` ${frequency}`;
+  if (instructions) instruction += `. ${instructions}`;
+
+  return instruction.trim() || "Follow prescribed dosage";
+};
+
+/**
+ * Calculate medication cost per day
+ */
+const calculateDailyCost = (medication) => {
+  if (!medication.cost || !medication.reminder_times) {
+    return 0;
+  }
+
+  const dailyDoses = medication.reminder_times.length;
+  const costPerDose = medication.cost / (medication.refills_remaining || 1);
+
+  return Math.round(costPerDose * dailyDoses * 100) / 100; // Round to 2 decimal places
+};
+
+/**
+ * Group medications by category
+ */
+const groupMedicationsByCategory = (medications) => {
+  const grouped = {};
+
+  medications.forEach((medication) => {
+    const category = medication.category || "Uncategorized";
+    if (!grouped[category]) {
+      grouped[category] = [];
+    }
+    grouped[category].push(medication);
+  });
+
+  return grouped;
+};
+
 module.exports = {
   generateToken,
   verifyToken,
@@ -113,4 +231,10 @@ module.exports = {
   isValidEmail,
   sanitizeInput,
   getPaginationMeta,
+  calculateMedicationAdherence,
+  checkMedicationRefillStatus,
+  validateReminderTimes,
+  generateDosageInstructions,
+  calculateDailyCost,
+  groupMedicationsByCategory,
 };
