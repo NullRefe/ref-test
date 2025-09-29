@@ -564,7 +564,58 @@ export function PatientDashboard() {
           </div>
 
           {/* Sidebar with Health Summary + Govt Schemes + Emergency Contacts */}
-          <div className="space-y-6">{/* (unchanged sidebar code here) */}</div>
+          <div className="space-y-6">
+            <Card className="govt-card">
+              <CardHeader>
+                <CardTitle className="text-primary">{t.dashboard.healthSummary}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center p-3 bg-muted rounded-lg">
+                    <div className="text-lg font-bold text-primary">120/80</div>
+                    <div className="text-xs text-muted-foreground">BP (mmHg)</div>
+                  </div>
+                  <div className="text-center p-3 bg-muted rounded-lg">
+                    <div className="text-lg font-bold text-primary">72</div>
+                    <div className="text-xs text-muted-foreground">Heart Rate</div>
+                  </div>
+                  <div className="text-center p-3 bg-muted rounded-lg">
+                    <div className="text-lg font-bold text-primary">68</div>
+                    <div className="text-xs text-muted-foreground">Weight (kg)</div>
+                  </div>
+                  <div className="text-center p-3 bg-muted rounded-lg">
+                    <div className="text-lg font-bold text-primary">170</div>
+                    <div className="text-xs text-muted-foreground">Height (cm)</div>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-primary text-primary hover:bg-primary hover:text-primary-foreground bg-transparent"
+                >
+                  {t.dashboard.viewFullRecords}
+                </Button>
+              </CardContent>
+            </Card>
+              <Card className="govt-card">
+              <CardHeader>
+                <CardTitle className="text-primary">Government Health Schemes</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
+                  <h4 className="font-medium text-sm">Ayushman Bharat</h4>
+                  <p className="text-xs text-muted-foreground">Health insurance coverage</p>
+                </div>
+                <div className="p-3 bg-accent/10 rounded-lg border border-accent/20">
+                  <h4 className="font-medium text-sm">Jan Aushadhi</h4>
+                  <p className="text-xs text-muted-foreground">Affordable medicines</p>
+                </div>
+                <Button variant="outline" size="sm" className="w-full text-xs bg-transparent">
+                  View All Schemes
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
